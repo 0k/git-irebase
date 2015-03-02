@@ -103,7 +103,6 @@ You can send any code. I'll look at it and will integrate it myself in
 the code base and leave you as the author. This process can take time and
 it'll take less time if you follow the following guidelines:
 
-- check your code with PEP8 or pylint. Try to stick to 80 columns wide.
 - separate your commits per smallest concern.
 - each commit should pass the tests (to allow easy bisect)
 - each functionality/bugfix commit should contain the code, tests,
