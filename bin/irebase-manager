@@ -1,0 +1,215 @@
+#!/bin/bash
+
+
+#!-
+. /etc/shlib
+#!-
+
+include common
+include pretty
+
+depends git shyaml
+
+version=%%version%%
+
+usage="$exname"
+help='
+Will read ``/etc/'$exname'.rc`` to get a list of repository
+and branches to send to ``git irebase``.
+
+USAGE
+
+  '$usage'
+'
+
+ansi_color() {
+    if [ "$1" != "no" ]; then
+
+        DARKGREEN=$(echo -en "\e[0;32m")
+        DARKYELLOW=$(echo -en "\e[0;33m")
+
+        ansi_color="yes"
+
+    else
+
+        DARKGREEN=
+        DARKYELLOW=
+
+        ansi_color="no"
+
+    fi
+}
+
+ansi_color "$ansi_color"
+
+read-0() {
+    while [ "$1" ]; do
+        IFS=$'\0' read -r -d '' "$1" || return 1
+        shift
+    done
+}
+
+function get_current_branch() {
+   local branch
+   branch=$(git symbolic-ref HEAD --)
+   echo "${branch#refs/heads/}"
+}
+
+
+warn() { echo -en "${YELLOW}Warning:$NORMAL" "$@" "\n\r" >&2 ; }
+info() { echo -en "${BLUE}II$NORMAL" "$@" "\n\r" >&2 ; }
+verb() { [ "$VERBOSE" ] && echo -en "$@" "\n\r" >&2 ; }
+err() { echo -en "${RED}Error:$NORMAL" "$@" "\n\r" >&2 ; }
+die() { err "$@" ; exit 1; }
+
+
+while [ "$#" != 0 ]; do
+    case "$1" in
+        --help|-h)
+            print_help
+            exit 0
+            ;;
+        --send-report)
+            send_report="$2"
+            depends "$2"
+            shift
+            ;;
+        -*)
+            err "No options $1."
+            print_usage
+            exit 1
+            ;;
+        "")
+            err "Invalid '$1' argument."
+            print_usage
+            exit 1
+            ;;
+        *)  ## positional arguments
+            err "Too much positional arguments."
+            print_usage
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+conf_file="/etc/$exname.rc"
+
+work_dir=$(cat "$conf_file" | shyaml get-value work-dir)
+mkdir -p "$work_dir"
+
+
+mk_local_repository() {
+    local local_git_repository="$1"
+    if ! [ -d "$local_git_repository" ]; then
+        (
+            mkdir -p "$local_git_repository" &&
+            cd "$local_git_repository" &&
+            git init
+        )
+    fi
+}
+
+
+fetch_setup_branch() {
+    local repository="$1" branch_name="$2"
+    git checkout -q "$(git rev-parse HEAD -- 2>/dev/null)" -- 2>/dev/null  ## jump off any branch
+    git fetch -q "$repository" "$branch_name" 2>/dev/null &&
+    git branch "$branch_name" FETCH_HEAD -f
+    if [ "$?" != 0 ]; then
+        err "Could not fetch branch $DARKGREEN$branch_name$NORMAL on repo $WHITE$repository$NORMAL."
+        return 1
+    fi
+}
+
+
+del_tmp_dir () {
+    rm -rf "$TMPDIR"
+}
+
+
+send_report() {
+    if [ "$send_report" ]; then
+        ## for use in send_report
+        export walking_branch walking_repos target_branch target_repos conf_file
+        "$send_report"
+    else
+        default_send_report
+    fi
+}
+
+remove_ansi () {
+    sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g"
+}
+
+default_send_report() {
+    tos=$(cat "$conf_file" | shyaml get-values send-report.mail.recipients 2>/dev/null | tr "\n" " ")
+    (
+        echo "Hello,"
+        echo
+        echo "I'm afraid I'll need some help on this. Can you push back on "
+        echo "repository $walking_repos the branch $walking_branch after solving"
+        echo "the conflict I've faced ?"
+        echo
+        echo "Don't forget to get the last version of the branches:"
+        echo
+        echo '    git fetch "$target_repository" "$target_branch"'
+        echo '    git branch "$target_branch" FETCH_HEAD -f'
+        echo '    git fetch "$walking_repository" "$walking_branch"'
+        echo '    git branch "$walking_branch" FETCH_HEAD -f'
+        echo '    git checkout "$walking_branch"'
+        echo '    git rebase $target'
+        echo
+        cat -
+        echo
+        echo 'Many thanks.'
+        echo "$exname"
+    ) | remove_ansi | mail -s "[$exname] Failed irebase of $walking_branch on to $target_branch." $tos &&
+    echo "report mail sent."
+}
+
+
+TMPDIR="$(mktemp -dt "$(basename $0).XXXXXXXXXX")"
+trap del_tmp_dir EXIT
+
+cat "$conf_file" | shyaml key-values-0 irebase 2>/dev/null |
+while read-0 repos cfg; do
+    Section "$repos"
+    mk_local_repository "$work_dir/$repos"
+    cd "$work_dir/$repos"
+    while read-0 setup; do
+        walking_branch=$(echo "$setup" | shyaml get-value "walking-branch.branch-name")
+        walking_repos=$(echo "$setup" | shyaml get-value "walking-branch.repository")
+        target_branch=$(echo "$setup" | shyaml get-value "target-branch.branch-name")
+        target_repos=$(echo "$setup" | shyaml get-value "target-branch.repository")
+
+        Section "Rebasing ${DARKGREEN}$walking_branch${WHITE} onto ${DARKGREEN}$target_branch${NORMAL}"
+        Feed
+
+        fetch_setup_branch "$walking_repos" "$walking_branch" &&
+        fetch_setup_branch "$target_repos" "$target_branch"
+        if [ "$?" != 0 ]; then
+            warn "Skipping this irebase due to errors."
+            continue
+        fi
+
+        previous="$(git rev-parse "$walking_branch")"
+        git checkout -q "$walking_branch" ||
+            { err "Could not checkout $walking_branch. Skipping." ; continue ; }
+        rm "$TMPDIR/report"
+        while git irebase -n 1 "$target_branch" -o "$TMPDIR/report"; do
+            new_pos="$(git rev-parse "$walking_branch")"
+            [ "$previous" == "$new_pos" ] && break
+            ## XXXvlab should hook some tests here.
+            Wrap -q -d "push back ${DARKGREEN}$walking_branch${NORMAL} to $WHITE$walking_repos$NORMAL" \
+                git push -f "$walking_repos" "$walking_branch:$walking_branch" || break
+            previous="$new_pos"
+        done
+        if [ -e "$TMPDIR/report" ]; then
+            err "irebasing branch $walking_branch towards $target_branch:"
+            cat "$TMPDIR/report" | send_report
+            continue
+        fi
+
+    done < <(echo "$cfg" | shyaml get-values-0 2>/dev/null)
+done

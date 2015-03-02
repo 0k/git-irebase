@@ -1,0 +1,155 @@
+#!/bin/bash
+
+
+#!-
+. /etc/shlib
+#!-
+
+include common
+include pretty
+
+depends git
+
+
+usage="$exname [-n MAX] [-q] [-o REPORTFILE] TARGETFILE"
+help="
+Rebase current branch on target branch incrementally.
+
+USAGE
+
+  $usage
+
+OPTIONS
+  -q              Quiet mode
+  -n MAX          Limit number of commit to do.
+                  (default: no limit)
+  -o REPORTFILE   Output file to write the final report in.
+                  (default: to stdout)
+
+"
+
+function get_current_branch() {
+   local branch
+   branch=$(git symbolic-ref HEAD)
+   echo "${branch#refs/heads/}"
+}
+
+
+warn() { echo -en "${YELLOW}Warning:$NORMAL" "$@" "\n\r" >&2 ; }
+info() { echo -en "${BLUE}II$NORMAL" "$@" "\n\r" >&2 ; }
+verb() { [ "$VERBOSE" ] && echo -en "$@" "\n\r" >&2 ; }
+err() { echo -en "${RED}Error:$NORMAL" "$@" "\n\r" >&2 ; }
+die() { err "$@" ; exit 1; }
+
+
+while [ "$#" != 0 ]; do
+    case "$1" in
+        --help|-h)
+            print_help
+            exit 0
+            ;;
+        -n)
+            nb=$2
+            shift
+            ;;
+        -q)
+            quiet=true
+            ;;
+        -o)
+            report="$2"
+            if ! touch "$report"; then
+                die "Can't access $report file"
+            fi
+            shift
+            ;;
+        -*)
+            err "No options $1."
+            print_usage
+            exit 1
+            ;;
+        "")
+            err "Invalid '$1' argument."
+            print_usage
+            exit 1
+            ;;
+        *)  ## positional arguments
+            if [ -z "$target" ]; then
+                target="$1"
+            else
+                err "Too much positional arguments."
+                print_usage
+                exit 1
+            fi
+            ;;
+    esac
+    shift
+done
+
+TOP_LEVEL=$(git rev-parse --show-toplevel)
+GIT_DIR=$(git rev-parse --git-dir)
+
+is_rebasing() {
+    dotest="$GIT_DIR"/rebase-merge
+    test -d "$dotest" -o -d "$GIT_DIR"/rebase-apply
+}
+
+report() {
+    if [ "$report" ]; then
+        cat - >> "$report"
+    else
+        cat -
+    fi
+}
+
+
+if is_rebasing; then
+    err "Rebasing is still in progress."
+    exit 1
+fi
+
+[ "$quiet" == "true" ] && wrap_opts=" -q "
+BRANCH="$(get_current_branch)"
+
+i=${nb:--1}
+while [ "$i" != "0" ]; do
+    i=$[$i - 1]
+    begin=$(git merge-base "$BRANCH" "$target") &&
+    todo=$(git rev-list "$begin".."$target" --first-parent --reverse)
+    [ -z "$todo" ] && break
+    next=$(echo "$todo" | head -n 1) &&
+    Wrap $wrap_opts -d "Rebase onto $target~$[$(echo "$todo" | wc -l) - 1]" \
+        git rebase --onto "$next" "$begin"
+    if [ "$?" != "0" ]; then
+        original_commit="$(cat "$GIT_DIR"/rebase-apply/original-commit)"
+        upstream_stat="$(git log -n 1 --first-parent --stat "$next" -m --color | sed -r 's/^/| /g')"
+        current_stat="$(git log -n 1 --first-parent --stat "$original_commit" -m --color | sed -r 's/^/| /g')"
+
+        {
+            echo " "
+            echo "The following command from branch '$BRANCH' yielded a conflict:"
+            echo
+            echo "    git rebase --onto '$(git rev-parse --short $next)' '$(git rev-parse --short $begin)' "
+            echo ""
+            echo "$WHITE--- upstream commit's stat introducting conflict$NORMAL"
+            echo
+            echo "$upstream_stat"
+            echo
+            echo "$WHITE--- local incompatible commit$NORMAL"
+            echo
+            echo "$current_stat"
+            echo
+            echo "MORE INFORMATION"
+            echo
+            echo "    To see the upstream patch:"
+            echo
+            echo "      git log -p -n 1 --first-parent -m $(git rev-parse --short $next)"
+            echo
+            echo "    To see the local incompatible commit patch:"
+            echo
+            echo "      git log -p -n 1 --first-parent -m $(git rev-parse --short $original_commit)"
+            echo
+        } | report
+        git rebase --abort
+        exit 1
+    fi
+done
