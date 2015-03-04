@@ -196,7 +196,7 @@ while read-0 repos cfg; do
         previous="$(git rev-parse "$walking_branch")"
         git checkout -q "$walking_branch" ||
             { err "Could not checkout $walking_branch. Skipping." ; continue ; }
-        rm "$TMPDIR/report"
+        rm -f "$TMPDIR/report"
         while git irebase -n 1 "$target_branch" -o "$TMPDIR/report"; do
             new_pos="$(git rev-parse "$walking_branch")"
             [ "$previous" == "$new_pos" ] && break
@@ -204,6 +204,7 @@ while read-0 repos cfg; do
             Wrap -q -d "push back ${DARKGREEN}$walking_branch${NORMAL} to $WHITE$walking_repos$NORMAL" \
                 git push -f "$walking_repos" "$walking_branch:$walking_branch" || break
             previous="$new_pos"
+            rm -f "$TMPDIR/report"
         done
         if [ -e "$TMPDIR/report" ]; then
             err "irebasing branch $walking_branch towards $target_branch:"
