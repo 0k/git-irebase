@@ -56,7 +56,7 @@ For example::
         recipients:
           - valentin.lab_irebase-manager@kalysto.org
     irebase:
-      - odoo
+      odoo
         - walking-branch:
             branch-name: 0k/8.0-odoo-auto-rebase
             repository: /var/git/0k/odoo.git
