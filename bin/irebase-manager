@@ -199,7 +199,7 @@ while read-0 repos cfg; do
         rm -f "$TMPDIR/report"
         while git irebase -n 1 "$target_branch" -o "$TMPDIR/report"; do
             new_pos="$(git rev-parse "$walking_branch")"
-            [ "$previous" == "$new_pos" ] && break
+            [ "$previous" != "$new_pos" ] || break
             ## XXXvlab should hook some tests here.
             Wrap -q -d "push back ${DARKGREEN}$walking_branch${NORMAL} to $WHITE$walking_repos$NORMAL" \
                 git push -f "$walking_repos" "$walking_branch:$walking_branch" || break
