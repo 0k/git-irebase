@@ -131,10 +131,10 @@ del_tmp_dir () {
 send_report() {
     if [ "$send_report" ]; then
         ## for use in send_report
-        export walking_branch walking_repos target_branch target_repos conf_file
-        "$send_report"
+        export first walking_branch walking_repos target_branch target_repos conf_file
+        "$send_report" "$@"
     else
-        default_send_report
+        default_send_report "$@"
     fi
 }
 
@@ -143,7 +143,33 @@ remove_ansi () {
 }
 
 default_send_report() {
+    [ "$1" == "noop" ] && return 0
     tos=$(cat "$conf_file" | shyaml get-values send-report.mail.recipients 2>/dev/null | tr "\n" " ")
+    if [ "$1" == "success" ]; then
+        revlist=$(git rev-list $(git merge-base "$first" "$target_branch").."$target_branch")
+        patchpile=$(git rev-list "$target_branch".."$walking_branch")
+        revlist_count=$(echo "$revlist" | wc -l)
+        patchpile_count=$(echo "$patchpile" | wc -l )
+        (
+        echo "Hello,"
+        echo
+        echo "I'm happy to tell you that I've successfully rebased branch $walking_branch"
+        echo "of repository $walking_repos onto last version of branch $target_branch of "
+        echo "repository $target_repos, and pushed back the result."
+        echo
+        echo "Last version of $target_branch was commit $(git rev-parse $target_branch), BTW."
+        echo 
+        echo "I did have to rebase through $revlist_count new commits the "
+        echo "$patchpile_count commits of branch $walking_branch."
+        echo
+        echo 'Yours, truely'
+        echo "$exname"
+        ) | remove_ansi | mail -s "[$exname] irebased ${patchpile_count}c of $walking_branch onto new ${revlist_count}c of $target_branch." $tos &&
+        echo "successfull report mail sent."
+      
+       return 0
+    fi
+
     (
         echo "Hello,"
         echo
@@ -165,7 +191,7 @@ default_send_report() {
         echo 'Many thanks.'
         echo "$exname"
     ) | remove_ansi | mail -s "[$exname] Failed irebase of $walking_branch on to $target_branch." $tos &&
-    echo "report mail sent."
+    echo "failure report mail sent."
 }
 
 
@@ -215,8 +241,21 @@ while read-0 repos cfg; do
         done
         if [ -z "$finished" ]; then
             err "irebasing branch $walking_branch towards $target_branch:"
-            cat "$TMPDIR/report" | send_report
+            if [ -s "$TMPDIR/report" ]; then
+                cat "$TMPDIR/report"
+            else
+                echo "There are no report produced by ``git-irebase``, you should"
+                echo "probably check my logs on the server for more informations."
+            fi | send_report fail
             continue
+	else
+            if [ "$first" != "$new_pos" ]; then
+                Elt "successfull irebase"; Feed
+                send_report success
+            else
+                Elt "nothing to do "; Feed
+                send_report noop
+	    fi
         fi
 
     done < <(echo "$cfg" | shyaml get-values-0 2>/dev/null)
