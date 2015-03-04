@@ -153,12 +153,12 @@ default_send_report() {
         echo
         echo "Don't forget to get the last version of the branches:"
         echo
-        echo '    git fetch "$target_repository" "$target_branch"'
-        echo '    git branch "$target_branch" FETCH_HEAD -f'
-        echo '    git fetch "$walking_repository" "$walking_branch"'
-        echo '    git branch "$walking_branch" FETCH_HEAD -f'
-        echo '    git checkout "$walking_branch"'
-        echo '    git rebase $target'
+        echo "    git fetch \"$target_repository\" \"$target_branch\""
+        echo "    git branch \"$target_branch\" FETCH_HEAD -f"
+        echo "    git fetch \"$walking_repository\" \"$walking_branch\""
+        echo "    git branch \"$walking_branch\" FETCH_HEAD -f"
+        echo "    git checkout \"$walking_branch\""
+        echo "    git rebase $target"
         echo
         cat -
         echo
