@@ -113,7 +113,7 @@ mk_local_repository() {
 
 fetch_setup_branch() {
     local repository="$1" branch_name="$2"
-    git checkout -q "$(git rev-parse HEAD -- 2>/dev/null)" -- 2>/dev/null  ## jump off any branch
+    git checkout -q "$(git rev-parse HEAD 2>/dev/null)" -- 2>/dev/null  ## jump off any branch
     git fetch -q "$repository" "$branch_name" 2>/dev/null &&
     git branch "$branch_name" FETCH_HEAD -f
     if [ "$?" != 0 ]; then
