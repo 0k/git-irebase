@@ -146,8 +146,8 @@ default_send_report() {
     [ "$1" == "noop" ] && return 0
     tos=$(cat "$conf_file" | shyaml get-values send-report.mail.recipients 2>/dev/null | tr "\n" " ")
     if [ "$1" == "success" ]; then
-        revlist=$(git rev-list $(git merge-base "$first" "$target_branch").."$target_branch")
-        patchpile=$(git rev-list "$target_branch".."$walking_branch")
+        revlist=$(git rev-list --first-parent "$(git merge-base "$first" "$target_branch")".."$target_branch")
+        patchpile=$(git rev-list --first-parent "$target_branch".."$walking_branch")
         revlist_count=$(echo "$revlist" | wc -l)
         patchpile_count=$(echo "$patchpile" | wc -l )
         (
