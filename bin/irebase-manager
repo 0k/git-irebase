@@ -158,16 +158,15 @@ default_send_report() {
         echo "repository $target_repos, and pushed back the result."
         echo
         echo "Last version of $target_branch was commit $(git rev-parse $target_branch), BTW."
-        echo 
-        echo "I did have to rebase through $revlist_count new commits the "
-        echo "$patchpile_count commits of branch $walking_branch."
         echo
-        echo 'Yours, truely'
+        echo "I did have to rebase through $revlist_count new commits the $patchpile_count commits"
+        echo "of branch $walking_branch."
+        echo
+        echo 'Yours, truely,'
         echo "$exname"
         ) | remove_ansi | mail -s "[$exname] irebased ${patchpile_count}c of $walking_branch onto new ${revlist_count}c of $target_branch." $tos &&
         echo "successfull report mail sent."
-      
-       return 0
+        return 0
     fi
 
     (
