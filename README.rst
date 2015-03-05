@@ -39,13 +39,13 @@ Both requires the `kal-shlib-pretty`_ package.
 
 ``git-irebase`` doesn't have much more dependency than ``bash`` and ``git``.
 
-``rebase-walk`` requires ``shyaml`` to be installed.
+``irebase-manager`` requires ``shyaml`` to be installed.
 
 
 Config file
 ===========
 
-The config file is only for ``rebase-walk``. It is located in ``/etc/rebase-walk.rc``.
+The config file is only for ``irebase-manager``. It is located in ``/etc/irebase-manager.rc``.
 It uses ``yaml``.
 
 For example::
@@ -55,20 +55,49 @@ For example::
       mail:
         recipients:
           - valentin.lab_irebase-manager@kalysto.org
-    irebase:
-      odoo
-        - walking-branch:
-            branch-name: 0k/8.0-odoo-auto-rebase
-            repository: /var/git/0k/odoo.git
-          target-branch:
-            branch-name: 8.0
-            repository: https://github.com/odoo/odoo.git
-        - walking-branch:
-            branch-name: 0k/8.0-ocb-auto-rebase
-            repository: /var/git/0k/odoo.git
-          target-target:
-            branch-name: 8.0
-            repository: https://github.com/odoo/odoo.git
+      slack:
+        slackaccountlabel:
+          token: "xoxb-3381751679-gtdywBrfpwHasWcfBjwQqfFF"
+          msg:
+            success:
+              - to: ["#irebase"]
+                body: >
+                  rebased ${patchpile_count}c of $walking_branch onto
+                  new ${revlist_count}c of $target_branch.
+            failure:
+              - to: [vlab, "#irebase"]
+                body: >
+                  I'm afraid I'll need some help on this. Can you push back on
+                  repository $walking_repos the branch $walking_branch after solving
+                  the conflict I've faced ?
+
+                  Don't forget to get the last version of the branches:
+
+                      git fetch "$target_repos" "$target_branch"
+                      git branch "$target_branch" FETCH_HEAD -f
+                      git fetch "$walking_repos" "$walking_branch"
+                      git branch "$walking_branch" FETCH_HEAD -f
+                      git checkout "$walking_branch"
+                      git rebase $target_branch
+
+                  $report
+
+                  Many thanks.
+
+      irebase:
+        odoo:
+          - walking-branch:
+              branch-name: 0k/8.0-odoo-auto-rebase
+              repository: /var/git/0k/odoo.git
+            target-branch:
+              branch-name: 8.0
+              repository: https://github.com/odoo/odoo.git
+          - walking-branch:
+              branch-name: 0k/8.0-ocb-auto-rebase
+              repository: /var/git/0k/odoo.git
+            target-target:
+              branch-name: 8.0
+              repository: https://github.com/oca/ocb.git
 
 
 Install
@@ -88,9 +117,29 @@ Install
 You are done.
 
 
+Usage
+=====
+
+You can launch ``irebase-manager``::
+
+    irebase-manager [--send-report MYPATH]
+
+The send-report must be an executable that we receive several
+environment variable and some stdin report from ``git-irebase``.
+This script job is to send it by any means toward who should
+receive it.
+
+If not specified, ``mail`` system command is used.
+
+A slacker executable is provided in
+``share/git-irebase/send-report/slack`` and will use the configuration
+store in ``/etc/irebase-manager.rc``.
+
+
 Todo
 ====
 
+- a real doc.
 - test should be easily hookable to rebase to stop when test fails
 - slack message interface example
 - should look at ``git imerge``

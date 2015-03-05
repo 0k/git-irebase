@@ -71,7 +71,10 @@ while [ "$#" != 0 ]; do
             ;;
         --send-report)
             send_report="$2"
-            depends "$2"
+            if ! [ -x "$send_report" ]; then
+                err "'$send_report' not found or not executable."
+                exit 1
+            fi
             shift
             ;;
         -*)
@@ -245,15 +248,15 @@ while read-0 repos cfg; do
             else
                 echo "There are no report produced by ``git-irebase``, you should"
                 echo "probably check my logs on the server for more informations."
-            fi | send_report fail
+            fi | send_report failure
             continue
 	else
             if [ "$first" != "$new_pos" ]; then
                 Elt "successfull irebase"; Feed
-                send_report success
+                echo "" | send_report success
             else
                 Elt "nothing to do "; Feed
-                send_report noop
+                echo "" | send_report noop
 	    fi
         fi
 

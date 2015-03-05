@@ -1,0 +1,120 @@
+#!/bin/bash
+
+if ! slack_cfg=$(cat "$conf_file" | shyaml get-value send-report.slack); then
+    echo "No 'send-report.slack' section in '$conf_file'."
+    echo "This is required to configure slack."
+    exit 1
+fi
+
+if [[ "$slack_cfg" == "null"* ]]; then
+    echo "The 'send-report.slack' section is empty. Nothing to do."
+    exit 0
+fi
+
+read-0() {
+    while [ "$1" ]; do
+        IFS=$'\0' read -r -d '' "$1" || return 1
+        shift
+    done
+}
+
+
+remove_ansi () {
+    sed -r "s/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g"
+}
+
+report=$(cat - | remove_ansi)
+
+event="$1"
+
+revlist=$(git rev-list --first-parent "$(git merge-base "$first" "$target_branch")".."$target_branch")
+patchpile=$(git rev-list --first-parent "$target_branch".."$walking_branch")
+revlist_count=$(echo "$revlist" | wc -l)
+patchpile_count=$(echo "$patchpile" | wc -l )
+
+while read-0 label cfg; do
+    if ! token=$(echo "$cfg" | shyaml get-value token); then
+        echo "No token defined for section $label. Skipping."
+        continue
+    fi
+    if ! msg=$(echo "$cfg" | shyaml get-value msg); then
+        echo "No 'msg' defined for section $label. Skipping."
+        continue
+    fi
+    if ! event_cfg=$(echo "$msg" | shyaml get-value "$event"); then
+        echo "No '$event' defined for section $label. Skipping."
+        continue
+    fi
+
+    while read-0 event_cfg; do
+        echo "Reporting to $label account..."
+        ## Users:
+        if ! to=$(echo "$event_cfg" | shyaml get-value "to"); then
+            echo "No 'to' defined for section $label.msg.$event. Skipping message."
+            continue
+        fi
+        if ! body=$(echo "$event_cfg" | shyaml get-value "body"); then
+            echo "No 'body' defined for section $label.msg.$event. Skipping message."
+            continue
+        fi
+        while read-0 dst; do
+            if [[ "$dst" == "#"* ]]; then
+                dst=${dst#\#}
+                type="channel"
+            else
+                type="user"
+            fi
+            eval_body=$(eval "cat <<EOF
+$body
+EOF")
+            echo "$eval_body" | slacker "--$type" "$dst" --token "$token"
+        done < <(echo "$to" | shyaml get-values-0)
+    done < <(echo "$event_cfg" | shyaml get-values-0)
+done < <(echo "$slack_cfg" | shyaml key-values-0)
+exit 0
+
+
+[ "$1" == "noop" ] && return 0
+tos=$(cat "$conf_file" | shyaml get-values send-report.slack.chans 2>/dev/null | tr "\n" " ")
+if [ "$1" == "success" ]; then
+    (
+        echo "Hello,"
+        echo
+        echo "I'm happy to tell you that I've successfully rebased branch $walking_branch"
+        echo "of repository $walking_repos onto last version of branch $target_branch of "
+        echo "repository $target_repos, and pushed back the result."
+        echo
+        echo "Last version of $target_branch was commit $(git rev-parse $target_branch), BTW."
+        echo
+        echo "I did have to rebase through $revlist_count new commits the $patchpile_count commits"
+        echo "of branch $walking_branch."
+        echo
+        echo 'Yours, truely,'
+        echo "$exname"
+    ) | remove_ansi | mail -s "[$exname] irebased ${patchpile_count}c of $walking_branch onto new ${revlist_count}c of $target_branch." $tos &&
+    echo "successfull report mail sent."
+    return 0
+fi
+
+(
+    echo "Hello,"
+    echo
+    echo "I'm afraid I'll need some help on this. Can you push back on "
+    echo "repository $walking_repos the branch $walking_branch after solving"
+    echo "the conflict I've faced ?"
+    echo
+    echo "Don't forget to get the last version of the branches:"
+    echo
+    echo "    git fetch \"$target_repos\" \"$target_branch\""
+    echo "    git branch \"$target_branch\" FETCH_HEAD -f"
+    echo "    git fetch \"$walking_repos\" \"$walking_branch\""
+    echo "    git branch \"$walking_branch\" FETCH_HEAD -f"
+    echo "    git checkout \"$walking_branch\""
+    echo "    git rebase $target_branch"
+    echo
+    cat -
+    echo
+    echo 'Many thanks.'
+    echo "$exname"
+) | remove_ansi | mail -s "[$exname] Failed irebase of $walking_branch on to $target_branch." $tos &&
+echo "failure report mail sent."
