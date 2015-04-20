@@ -264,14 +264,14 @@ while read-0 repos cfg; do
                 echo "probably check my logs on the server for more informations."
             fi | send_report failure
             continue
-	else
+        else
             if [ "$first" != "$new_pos" ]; then
                 Elt "successfull irebase"; Feed
                 echo "" | send_report success
             else
                 Elt "nothing to do "; Feed
                 echo "" | send_report noop
-	    fi
+            fi
         fi
 
     done < <(echo "$cfg" | shyaml get-values-0 2>/dev/null)
