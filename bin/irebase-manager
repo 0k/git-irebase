@@ -210,15 +210,29 @@ while read-0 repos cfg; do
         walking_repos=$(echo "$setup" | shyaml get-value "walking-branch.repository")
         target_branch=$(echo "$setup" | shyaml get-value "target-branch.branch-name")
         target_repos=$(echo "$setup" | shyaml get-value "target-branch.repository")
+        ## this branch is the original ref that walking branch has to rebase.
+        ref_branch=$(echo "$setup" | shyaml get-value "ref-branch.branch-name")
+        ref_repos=$(echo "$setup" | shyaml get-value "ref-branch.repository")
 
         Section "Rebasing ${DARKGREEN}$walking_branch${WHITE} onto ${DARKGREEN}$target_branch${NORMAL}"
         Feed
 
-        fetch_setup_branch "$walking_repos" "$walking_branch" &&
-        fetch_setup_branch "$target_repos" "$target_branch"
+        fetch_setup_branch "$target_repos" "$target_branch" &&
+        fetch_setup_branch "$ref_repos" "$ref_branch"
         if [ "$?" != 0 ]; then
             warn "Skipping this irebase due to errors."
             continue
+        fi
+
+        ref="$(git rev-parse "${ref_branch}")" 
+        last_ref_branch="${walking_branch}-last-ref"
+        if last_ref=$(git rev-parse "${last_ref_branch}" 2>/dev/null) && [ "$ref" == "$last_ref" ]; then
+            ## We have a previous ref, and it is the same than our ref.
+            Elt "ref not changed, continue on ${walking_branch}" && Feed
+        else
+            Wrap -d "(re)set our walking branch to ${ref_branch}." \
+                git branch -f "${walking_branch}" "${ref_branch}" \&\& \
+                git branch -f "${last_ref_branch}" "${ref_branch}" || break
         fi
 
         previous="$(git rev-parse "$walking_branch")"
@@ -236,7 +250,7 @@ while read-0 repos cfg; do
                 break
             fi
             ## XXXvlab should hook some tests here.
-            Wrap -q -d "push back ${DARKGREEN}$walking_branch${NORMAL} to $WHITE$walking_repos$NORMAL" \
+            Wrap -q -d "push ${DARKGREEN}$walking_branch${NORMAL} to $WHITE$walking_repos$NORMAL" \
                 git push -f "$walking_repos" "$walking_branch:$walking_branch" || break
             previous="$new_pos"
             rm -f "$TMPDIR/report"
