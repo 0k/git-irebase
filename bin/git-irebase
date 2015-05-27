@@ -121,32 +121,58 @@ while [ "$i" != "0" ]; do
         git rebase --onto "$next" "$begin"
     if [ "$?" != "0" ]; then
         original_commit="$(cat "$GIT_DIR"/rebase-apply/original-commit)"
-        upstream_stat="$(git log -n 1 --first-parent --stat "$next" -m --color | sed -r 's/^/| /g')"
-        current_stat="$(git log -n 1 --first-parent --stat "$original_commit" -m --color | sed -r 's/^/| /g')"
-
+        upstream_stat="$(git log -n 1 --first-parent --shortstat "$next" -m --color | sed -r 's/^/| /g')"
+        current_stat="$(git log -n 1 --first-parent --shortstat "$original_commit" -m --color | sed -r 's/^/| /g')"
+        conflict_files="$(git status --porcelain | egrep '^(U.|.U|AA|DD)')"
+        conflict_files_only="$(echo "$conflict_files" | cut -f 2 -d " ")"
+        conflict_files_uu_only="$(echo "$conflict_files" | egrep ^UU | cut -f 2 -d " ")"
+        full_diff="$(git diff --color)"
         {
             echo " "
             echo "The following command from branch '$BRANCH' yielded a conflict:"
             echo
             echo "    git rebase --onto '$(git rev-parse --short $next)' '$(git rev-parse --short $begin)' "
             echo ""
+            echo "Conflict files:"
+            echo
+            echo "$(echo "$conflict_files" | sed -r 's/^/  /g')"
             echo "$WHITE--- upstream commit's stat introducting conflict$NORMAL"
             echo
             echo "$upstream_stat"
+            echo "|"
+            echo "| Conflicting:"
+            echo "|"
+            echo "$(git log -n 1 --first-parent --stat "$next" \
+                         --format= -m --color -- $conflict_files_only |
+                    sed -r 's/^/| /g')"
             echo
             echo "$WHITE--- local incompatible commit$NORMAL"
             echo
             echo "$current_stat"
+            echo "|"
+            echo "| Conflicting:"
+            echo "|"
+            echo "$(git log -n 1 --first-parent --stat "$original_commit" \
+                        --format= -m --color -- $conflict_files_only |
+                    sed -r 's/^/| /g')"
             echo
+
+            if [ "$(echo "$full_diff" | wc -l)" -lt 50 ]; then
+                echo "DIFF:"
+                echo
+                echo "$full_diff"
+                echo
+            fi
+
             echo "MORE INFORMATION"
             echo
-            echo "    To see the upstream patch:"
+            echo "    To see the upstream patch (limited to the conflicting files):"
             echo
-            echo "      git log -p -n 1 --first-parent -m $(git rev-parse --short $next)"
+            echo "      git log -p -n 1 --first-parent -m $(git rev-parse --short $next) -- $conflict_files_uu_only"
             echo
-            echo "    To see the local incompatible commit patch:"
+            echo "    To see the local incompatible commit patch (limited to the conflicting files):"
             echo
-            echo "      git log -p -n 1 --first-parent -m $(git rev-parse --short $original_commit)"
+            echo "      git log -p -n 1 --first-parent -m $(git rev-parse --short $original_commit) -- $conflict_files_uu_only"
             echo
         } | report
         git rebase --abort
