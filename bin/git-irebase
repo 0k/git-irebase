@@ -11,7 +11,7 @@ include pretty
 depends git
 
 
-usage="$exname [-n MAX] [-q] [-o REPORTFILE] TARGETFILE"
+usage="$exname [-n MAX] [-q] [-o REPORTFILE] TARGET"
 help="
 Rebase current branch on target branch incrementally.
 
