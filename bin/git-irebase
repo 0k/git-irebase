@@ -91,7 +91,11 @@ if [ -z "$target" ]; then
     exit 1
 fi
 
-TOP_LEVEL=$(git rev-parse --show-toplevel)
+TOP_LEVEL=$(git rev-parse --show-toplevel) || {
+    err "Not in a git directory."
+    exit 1
+}
+
 GIT_DIR=$(git rev-parse --git-dir)
 
 is_rebasing() {
