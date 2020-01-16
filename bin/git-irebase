@@ -85,6 +85,12 @@ while [ "$#" != 0 ]; do
     shift
 done
 
+if [ -z "$target" ]; then
+    err "You need to provide at least a target branch"
+    print_help
+    exit 1
+fi
+
 TOP_LEVEL=$(git rev-parse --show-toplevel)
 GIT_DIR=$(git rev-parse --git-dir)
 
